@@ -1,3 +1,6 @@
+import time
+from config import BOT_TOKEN
+
 import aiohttp
 from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher
@@ -11,13 +14,39 @@ from aiogram.types import ReplyKeyboardRemove, \
 
 TOKEN = '5995636478:AAEcb2JUzOcrbSxqXAbmeFd9bVXttfReaus'
 
-bot = Bot(token=TOKEN)
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 buttons_list = []
+
+BlockdUserList = dict()
+num, maxx, block = 6, 60, 600
+
+
+async def userIsBlockd(user_id):
+    try:
+        user = BlockdUserList[user_id]
+        user["messages"] += 1
+    except:
+        BlockdUserList[user_id] = {"next_time": int(time.time()) + maxx, "messages": 1, "blocked": 0}
+        user = BlockdUserList[user_id]
+    if user["blocked"] >= int(time.time()):
+        return True
+    else:
+        if user["next_time"] >= int(time.time()):
+            if user["messages"] >= num:
+                BlockdUserList[user_id]["blocked"] = time.time() + block
+                return True
+        else:
+            BlockdUserList[user_id]["messages"] = 1
+            BlockdUserList[user_id]["next_time"] = int(time.time()) + maxx
+    return False
 
 
 @dp.message_handler(commands=['start'])
 async def process_start_command(message: types.Message):  # начало работы бота
+    if await userIsBlockd(message.from_user.id):
+        await message.reply("Блокировка за флуд!")
+        return
     kb = [
         [types.KeyboardButton(text='Курсы валют'), ],
         [types.KeyboardButton(text='Информация')],
@@ -32,6 +61,9 @@ async def process_start_command(message: types.Message):  # начало раб�
 
 @dp.message_handler(text='Информация')
 async def process_help_command(message: types.Message):
+    if await userIsBlockd(message.from_user.id):
+        await message.reply("Блокировка за флуд!")
+        return
     await message.reply("Это бот для конвертации валюты и точка\n По всем вопросам писать @missoceane7")
     data = Database()
     data.connection(message.from_user.id, message.text)
@@ -40,6 +72,9 @@ async def process_help_command(message: types.Message):
 @dp.message_handler(lambda message: message.text == 'Удалить')
 async def process_remove(message: types.Message):
     # Функция удаления (чистит конкретные данные в базе данных)
+    if await userIsBlockd(message.from_user.id):
+        await message.reply("Блокировка за флуд!")
+        return
     keyboard = types.InlineKeyboardMarkup()
     data = Database()
     global buttons_list
@@ -53,6 +88,9 @@ async def process_remove(message: types.Message):
 @dp.message_handler(lambda message: message.text == 'Добавить')
 async def process_add(message: types.Message):
     # Функция добавления новых валют
+    if await userIsBlockd(message.from_user.id):
+        await message.reply("Блокировка за флуд!")
+        return
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     data = Database()
     global buttons_list
@@ -66,12 +104,14 @@ async def process_add(message: types.Message):
 @dp.message_handler(lambda message: message.text == 'Курсы валют')
 async def process_course(message: types.Message):
     # Вывод выбранных пользователем валют
+    if await userIsBlockd(message.from_user.id):
+        await message.reply("Блокировка за флуд!")
+        return
     keyboard = types.InlineKeyboardMarkup()
     data = Database()
     global buttons_list
     buttons_list = data.check_currencies(message.from_user.id)
     for element in buttons_list:
-        print(element)
         keyboard.add(types.InlineKeyboardButton(text=element, callback_data=element))
     await message.answer("Курсы валют:", reply_markup=keyboard)
     data.connection(message.from_user.id, message.text)
